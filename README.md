@@ -12,6 +12,21 @@ Before deploying and running this project, ensure the following:
 * Azure VM with Managed Identity: The VM must have a system-assigned or user-assigned managed identity.
 * Azure Key Vault: The Key Vault should contain the LUKS decryption password as a secret.
 * VM Tags: The VM must have the following tags:
-    * KeyVaultURL: The URL of the Azure Key Vault (e.g., https://myvault.vault.azure.net).
-    * SecretName: The name of the secret that holds the LUKS decryption password.
-* LUKS-encrypted partition: Ensure you have a LUKS-encrypted partition that you want to unlock.
+    * LUKS-UNLOCK-KEY-VAULT-URL: The URL of the Azure Key Vault (e.g., https://myvault.vault.azure.net).
+    * LUKS-UNLOCK-SECRET-NAME: The name of the secret that holds the LUKS decryption password.
+    * Optional Tags:
+      * LUKS-UNLOCK-NAME: the luks device name, defaults to "arch-root"
+      * LUKS-UNLOCK-DEVICE: the disk, defaults to /dev/sda2
+
+## Installation
+* The binary must be located in "/usr/local/bin/luks_unlocker"
+* The hooks must be in /etc/initcpio/*
+
+/etc/mkinitcpio.conf should use udev and add both the **net** and the **luks_unlocker** hooks and the required Hyper-V modules:
+```
+MODULES=(hv_storvsc hv_vmbus hv_netvsc)
+BINARIES=()
+FILES=()
+HOOKS=(base udev autodetect microcode modconf kms keyboard block net luks_unlocker encrypt filesystems btrfs)
+COMPRESSION="zstd"
+```
