@@ -1,0 +1,18 @@
+[package]
+name = "azure-keyvault-unlock-luks"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "luks_unlocker"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"
+codegen-units = 1
+panic = "abort"
+
+[dependencies]
+minreq = { version = "2.12.0", default-features = false, features = ["https-rustls"] }
