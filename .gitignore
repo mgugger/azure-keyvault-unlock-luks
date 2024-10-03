@@ -2,3 +2,6 @@
 .vscode
 *.zip
 *.sha256
+pkg
+luks_unlocker
+*.zst
