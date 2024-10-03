@@ -10,16 +10,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-
-      - name: Set up Rust
-        uses: rust-lang/rustup@v1
-        with:
-          toolchain: stable
-          default: true
-
-      - name: Build the Binary
+      - uses: actions/checkout@v4
+      - name: Build
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
       - name: Zip the Binary
