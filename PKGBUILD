@@ -13,6 +13,6 @@ sha256sums=('1df2a2a77d2a5932f53073664c2177e9476da2eca5c876727623bc3bc5bacb32')
 
 package() {
     install -Dm755 "$srcdir/luks_unlocker" "$pkgdir/usr/local/bin/luks_unlocker"
-    install -Dm644 "$srcdir/etc/initcpio/hooks/luks_unlocker" "$pkgdir/etc/initcpio/hooks/luks_unlocker"
-    install -Dm644 "$srcdir/etc/initcpio/install/luks_unlocker" "$pkgdir/etc/initcpio/install/luks_unlocker"
+    install -Dm644 "$srcdir/etc/initcpio/hooks/luks_unlocker.sh" "$pkgdir/etc/initcpio/hooks/luks_unlocker"
+    install -Dm644 "$srcdir/etc/initcpio/install/luks_unlocker.sh" "$pkgdir/etc/initcpio/install/luks_unlocker"
 }
