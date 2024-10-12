@@ -96,11 +96,11 @@ fn get_key_vault_secret(token: &str, key_vault_url: &str, secret_name: &str) -> 
 }
 
 fn unlock_luks(luks_device: &str, luks_name: &str, password: &str) -> Result<(), UnlockError> {
-    let mut process = Command::new("cryptsetup")
-        .arg("luksOpen")
-        .arg(luks_device)
-        .arg(luks_name)
-        .stdin(Stdio::piped())
+    let mut process = Command::new("systemd-cryptsetup")
+        .arg("attach")
+        .arg(luks_name)      
+        .arg(luks_device)     
+        .stdin(Stdio::piped()) 
         .spawn()?;
 
     if let Some(mut stdin) = process.stdin.take() {

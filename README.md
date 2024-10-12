@@ -22,11 +22,11 @@ Before deploying and running this project, ensure the following:
 * The binary must be located in "/usr/local/bin/luks_unlocker"
 * The hooks must be in /etc/initcpio/*
 
-/etc/mkinitcpio.conf should use udev and add both the **net** and the **luks_unlocker** hooks and the required Hyper-V modules:
+/etc/mkinitcpio.conf should use udev and add the **sd-network**, **sd-resolve** and the **luks_unlocker** hooks and the required Hyper-V modules:
 ```
 MODULES=(hv_storvsc hv_vmbus hv_netvsc)
 BINARIES=()
 FILES=()
-HOOKS=(base udev autodetect microcode modconf kms keyboard block net luks_unlocker encrypt filesystems btrfs)
+HOOKS=(base systemd autodetect microcode modconf kms keyboard block sd-network sd-resolve luks_unlocker sd-encrypt filesystems)
 COMPRESSION="zstd"
 ```
