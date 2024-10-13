@@ -9,7 +9,6 @@ After=network-online.target systemd-networkd-wait-online.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/local/bin/luks_unlocker
-ExecStartPost=/usr/bin/systemctl start cryptsetup-pre.target
 
 [Install]
 WantedBy=cryptsetup-pre.target
