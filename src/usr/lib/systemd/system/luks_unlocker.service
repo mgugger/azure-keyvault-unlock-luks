@@ -1,16 +1,15 @@
 [Unit]
-Description=unlock luks with keyvault
+Description=Unlock LUKS with KeyVault
 Before=cryptsetup-pre.target
 DefaultDependencies=no
-Wants=systemd-networkd.service systemd-resolved.service
-After=systemd-networkd.service systemd-resolved.service
+Wants=network-online.target
+After=network-online.target systemd-networkd-wait-online.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/local/bin/luks_unlocker
-StandardOutput=journal+console
-StandardError=journal+console
+ExecStartPost=/usr/bin/systemctl start cryptsetup-pre.target
 
 [Install]
 WantedBy=cryptsetup-pre.target

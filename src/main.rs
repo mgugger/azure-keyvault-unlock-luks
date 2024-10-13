@@ -1,7 +1,10 @@
+use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::process::{ Command, Stdio };
+use std::os::unix::fs::PermissionsExt;
+use std::process::{Command, Stdio};
 use std::collections::HashMap;
+use tempfile::NamedTempFile;
 
 const IMDS_ENDPOINT: &str = "169.254.169.254:80";
 const IMDS_IP: &str = "169.254.169.254";
@@ -96,17 +99,21 @@ fn get_key_vault_secret(token: &str, key_vault_url: &str, secret_name: &str) -> 
 }
 
 fn unlock_luks(luks_device: &str, luks_name: &str, password: &str) -> Result<(), UnlockError> {
-    let mut process = Command::new("systemd-cryptsetup")
+    let mut temp_file = NamedTempFile::new()?;
+    let temp_file_path = temp_file.path().to_owned();
+    let mut permissions = fs::metadata(&temp_file_path)?.permissions();
+    permissions.set_mode(0o600);
+    fs::set_permissions(&temp_file_path, permissions)?;
+
+    write!(temp_file, "{}", password)?;  
+
+    let process = Command::new("systemd-cryptsetup")
         .arg("attach")
         .arg(luks_name)      
         .arg(luks_device)     
-        .stdin(Stdio::piped()) 
+        .arg(temp_file_path)
+        .stdin(Stdio::null())
         .spawn()?;
-
-    if let Some(mut stdin) = process.stdin.take() {
-        let _ = stdin.write_all(password.as_bytes());
-        stdin.write_all(b"\n")?;
-    }
     
     let output = process.wait_with_output()?;
 
