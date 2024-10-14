@@ -8,7 +8,14 @@ After=network-online.target systemd-networkd-wait-online.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+ExecStartPre=/bin/sh -c 'echo "nameserver 168.63.129.16" > /etc/resolv.conf'
 ExecStart=/usr/local/bin/luks_unlocker
+Restart=on-failure           
+RestartSec=10s                
+StartLimitIntervalSec=60s    
+StartLimitBurst=6
+StandardError=journal+console
+StandardOutput=journal+console
 
 [Install]
 WantedBy=cryptsetup-pre.target
