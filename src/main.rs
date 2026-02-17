@@ -1,9 +1,10 @@
+use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
-use std::collections::HashMap;
 use tempfile::NamedTempFile;
 
 const IMDS_ENDPOINT: &str = "169.254.169.254:80";
@@ -11,6 +12,12 @@ const IMDS_IP: &str = "169.254.169.254";
 const IMDS_PATH: &str = "/metadata/identity/oauth2/token?api-version=2019-08-01&resource=https://vault.azure.net";
 const IMDS_TAGS_PATH: &str = "/metadata/instance?api-version=2021-02-01&format=json";
 const VAULT_API_VERSION: &str = "7.2";
+
+enum Action {
+    Unlock,
+    EnrollTpm,
+    AddPassphrase { device: String },
+}
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -98,14 +105,20 @@ fn get_key_vault_secret(token: &str, key_vault_url: &str, secret_name: &str) -> 
     Ok(response[value_start..value_end].to_owned())
 }
 
-fn unlock_luks(luks_device: &str, luks_name: &str, password: &str) -> Result<(), UnlockError> {
+fn create_secret_tempfile(secret: &str) -> Result<NamedTempFile, UnlockError> {
     let mut temp_file = NamedTempFile::new()?;
     let temp_file_path = temp_file.path().to_owned();
     let mut permissions = fs::metadata(&temp_file_path)?.permissions();
     permissions.set_mode(0o600);
     fs::set_permissions(&temp_file_path, permissions)?;
+    write!(temp_file, "{}", secret)?;
+    Ok(temp_file)
+}
 
-    write!(temp_file, "{}", password)?;  
+
+fn unlock_luks(luks_device: &str, luks_name: &str, password: &str) -> Result<(), UnlockError> {
+    let temp_file = create_secret_tempfile(password)?;
+    let temp_file_path = temp_file.path().to_owned();
 
     let process = Command::new("systemd-cryptsetup")
         .arg("attach")
@@ -129,21 +142,114 @@ fn unlock_luks(luks_device: &str, luks_name: &str, password: &str) -> Result<(),
     }
 }
 
+fn enroll_tpm(luks_device: &str, password: &str) -> Result<(), UnlockError> {
+    let temp_file = create_secret_tempfile(password)?;
+    let temp_file_path = temp_file.path().to_owned();
+
+    let output = Command::new("systemd-cryptenroll")
+        .arg("--tpm2-device=auto")
+        .arg(format!("--password-file={}", temp_file_path.display()))
+        .arg(luks_device)
+        .output()?;
+
+    if output.status.success() {
+        println!("Successfully enrolled TPM2 token for {}.", luks_device);
+        Ok(())
+    } else {
+        eprintln!(
+            "Failed to enroll TPM2 token: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Err(UnlockError::ParseError("TPM enrollment failed."))
+    }
+}
+
+fn add_passphrase_slot(luks_device: &str, password: &str) -> Result<(), UnlockError> {
+    let new_key_file = create_secret_tempfile(password)?;
+    let new_key_path = new_key_file.path().to_owned();
+
+    let output = Command::new("systemd-cryptenroll")
+        .arg("--unlock-tpm2-device=auto")
+        .arg(format!("--new-password-file={}", new_key_path.display()))
+        .arg(luks_device)
+        .stdin(Stdio::null())
+        .output()?;
+
+    if output.status.success() {
+        println!("Added Key Vault passphrase to {} (unlocked via TPM2).", luks_device);
+        Ok(())
+    } else {
+        eprintln!(
+            "Failed to add passphrase slot: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Err(UnlockError::ParseError("Adding passphrase slot via TPM2 failed."))
+    }
+}
+
+fn print_usage() {
+    println!("Usage:");
+    println!("  luks_unlocker             # Unlock using Azure Key Vault");
+    println!("  luks_unlocker --enroll-tpm # Enroll TPM2 for the LUKS device");
+    println!("  luks_unlocker --add-passphrase-slot <device> # Add Key Vault secret as passphrase");
+}
+
 fn main() -> Result<(), UnlockError> {
+    let mut args = env::args().skip(1);
+    let action = match args.next().as_deref() {
+        Some("--enroll-tpm") => Action::EnrollTpm,
+        Some("--add-passphrase-slot") => {
+            if let Some(device) = args.next() {
+                Action::AddPassphrase { device }
+            } else {
+                eprintln!("Missing <device> argument for --add-passphrase-slot.");
+                print_usage();
+                return Err(UnlockError::ParseError("Missing device argument"));
+            }
+        }
+        Some("-h") | Some("--help") => {
+            print_usage();
+            return Ok(());
+        }
+        Some(arg) => {
+            eprintln!("Unknown argument: {}", arg);
+            print_usage();
+            return Err(UnlockError::ParseError("Invalid arguments"));
+        }
+        None => Action::Unlock,
+    };
+
     let key_vault_url_tag = "LUKS-UNLOCK-KEY-VAULT-URL";
     let secret_name_tag = "LUKS-UNLOCK-SECRET-NAME";
     let luks_name_tag = "LUKS-UNLOCK-NAME";
     let luks_device_tag = "LUKS-UNLOCK-DEVICE";
 
     let tags = get_vm_tags()?;
-    let luks_name = tags.get(luks_name_tag).map_or("arch_root", String::as_str);
-    let luks_device = tags.get(luks_device_tag).map_or("/dev/sda2", String::as_str);
-    let key_vault_url = tags.get(key_vault_url_tag).expect(&format!("Missing {}", key_vault_url_tag));
-    let secret_name = tags.get(secret_name_tag).expect(&format!("Missing {}", secret_name_tag));
+    let luks_name = tags
+        .get(luks_name_tag)
+        .cloned()
+        .unwrap_or_else(|| "arch-root".to_string());
+    let luks_device = tags
+        .get(luks_device_tag)
+        .cloned()
+        .unwrap_or_else(|| "/dev/sda2".to_string());
+    let key_vault_url = tags
+        .get(key_vault_url_tag)
+        .cloned()
+        .expect(&format!("Missing {}", key_vault_url_tag));
+    let secret_name = tags
+        .get(secret_name_tag)
+        .cloned()
+        .expect(&format!("Missing {}", secret_name_tag));
 
     let token = get_managed_identity_token()?;
     let secret = get_key_vault_secret(&token, &key_vault_url, &secret_name)?;
-    unlock_luks(&luks_device, &luks_name, &secret)?;
+
+    match action {
+        Action::Unlock => unlock_luks(&luks_device, &luks_name, &secret)?,
+        Action::EnrollTpm => enroll_tpm(&luks_device, &secret)?,
+        Action::AddPassphrase { device } => add_passphrase_slot(&device, &secret)?,
+    }
 
     Ok(())
 }

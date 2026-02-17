@@ -3,6 +3,8 @@
 FILE_TO_ZIP="target/x86_64-unknown-linux-gnu/release/luks_unlocker"
 OUTPUT_ZIP="azure-keyvault-unlock-luks_x86_64.zip"
 
+cargo build --release
+
 zip -j "$OUTPUT_ZIP" "$FILE_TO_ZIP"
 
 if [ $? -ne 0 ]; then

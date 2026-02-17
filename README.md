@@ -6,7 +6,8 @@ Managed Identity Authentication: Uses the VM's managed identity to authenticate 
 Azure Key Vault Integration: Retrieves the LUKS decryption secret from Azure Key Vault.
 Minimal Dependencies: Uses Rust’s standard library to reduce external dependencies, making it suitable for use in constrained environments like initramfs.
 Dynamic Configuration: Retrieves the Key Vault URL and secret name from the VM's tags using IMDS, eliminating the need for hardcoded configuration.
-Prerequisites
+
+## Prerequisites
 Before deploying and running this project, ensure the following:
 * Requires [https://github.com/random-archer/mkinitcpio-systemd-tool](https://github.com/random-archer/mkinitcpio-systemd-tool) hook **systemd-tool** (provides the initrd `systemd-networkd`/`systemd-resolved` tooling)
 * Azure VM with Managed Identity: The VM must have a system-assigned or user-assigned managed identity with access to the AKV secret.
@@ -22,7 +23,7 @@ Before deploying and running this project, ensure the following:
 * The binary must be located in "/usr/local/bin/luks_unlocker"
 * The hooks must be in /etc/initcpio/*
   
-See src/etc/initcpio/install and /usr/lib/systemd/system for the required system services and hooks.
+See src/etc/initcpio/install, src/etc/mkinitcpio-systemd-tool and /usr/lib/systemd/system for the required system services, configurations and hooks.
 
 /etc/mkinitcpio.conf should use systemd and add the **systemd-tool** and **luks_unlocker** hooks together with the required Hyper-V modules:
 ```
@@ -33,4 +34,13 @@ FIRMWARE=()
 HOOKS=(systemd systemd-tool autodetect modconf kms sd-vconsole block initrd_zram luks_unlocker sd-encrypt btrfs filesystems)
 COMPRESSION="zstd"
 COMPRESSION_OPTIONS=(-9)
+```
+
+## Usage
+
+```
+luks_unlocker                              # Unlock LUKS partition using Azure Key Vault
+luks_unlocker --enroll-tpm                 # Enroll TPM2 for the LUKS device
+luks_unlocker --add-passphrase-slot <dev>  # Add Key Vault secret as a LUKS passphrase (unlocks via TPM2)
+luks_unlocker --help                       # Show usage information
 ```
