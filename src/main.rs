@@ -25,6 +25,7 @@ enum UnlockError {
     IoError(std::io::Error),
     ParseError(&'static str),
     MinreqError(minreq::Error),
+    CommandError(String),
 }
 
 impl From<std::io::Error> for UnlockError {
@@ -120,25 +121,27 @@ fn unlock_luks(luks_device: &str, luks_name: &str, password: &str) -> Result<(),
     let temp_file = create_secret_tempfile(password)?;
     let temp_file_path = temp_file.path().to_owned();
 
-    let process = Command::new("systemd-cryptsetup")
+    let output = Command::new("systemd-cryptsetup")
         .arg("attach")
         .arg(luks_name)      
         .arg(luks_device)     
         .arg(temp_file_path)
         .stdin(Stdio::null())
-        .spawn()?;
-    
-    let output = process.wait_with_output()?;
+        .output()?;
 
     if output.status.success() {
         println!("Successfully unlocked LUKS partition.");
         Ok(())
     } else {
-        eprintln!(
-            "Failed to unlock LUKS partition: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        Err(UnlockError::ParseError("LUKS unlocking failed."))
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let error_message = if stderr.is_empty() {
+            format!("LUKS unlocking failed (exit status: {}).", output.status)
+        } else {
+            format!("LUKS unlocking failed: {}", stderr)
+        };
+
+        eprintln!("{}", error_message);
+        Err(UnlockError::CommandError(error_message))
     }
 }
 
@@ -157,11 +160,15 @@ fn enroll_tpm(luks_device: &str, password: &str) -> Result<(), UnlockError> {
         println!("Successfully enrolled TPM2 token for {}.", luks_device);
         Ok(())
     } else {
-        eprintln!(
-            "Failed to enroll TPM2 token: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        Err(UnlockError::ParseError("TPM enrollment failed."))
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let error_message = if stderr.is_empty() {
+            format!("TPM enrollment failed (exit status: {}).", output.status)
+        } else {
+            format!("TPM enrollment failed: {}", stderr)
+        };
+
+        eprintln!("{}", error_message);
+        Err(UnlockError::CommandError(error_message))
     }
 }
 
@@ -180,11 +187,15 @@ fn add_passphrase_slot(luks_device: &str, password: &str) -> Result<(), UnlockEr
         println!("Added Key Vault passphrase to {} (unlocked via TPM2).", luks_device);
         Ok(())
     } else {
-        eprintln!(
-            "Failed to add passphrase slot: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        Err(UnlockError::ParseError("Adding passphrase slot via TPM2 failed."))
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let error_message = if stderr.is_empty() {
+            format!("Adding passphrase slot via TPM2 failed (exit status: {}).", output.status)
+        } else {
+            format!("Adding passphrase slot via TPM2 failed: {}", stderr)
+        };
+
+        eprintln!("{}", error_message);
+        Err(UnlockError::CommandError(error_message))
     }
 }
 
