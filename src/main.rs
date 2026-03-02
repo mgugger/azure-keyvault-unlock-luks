@@ -173,15 +173,28 @@ fn enroll_tpm(luks_device: &str, password: &str) -> Result<(), UnlockError> {
 }
 
 fn add_passphrase_slot(luks_device: &str, password: &str) -> Result<(), UnlockError> {
-    let new_key_file = create_secret_tempfile(password)?;
-    let new_key_path = new_key_file.path().to_owned();
+    let mut child = Command::new("script")
+        .arg("-qefc")
+        .arg(format!(
+            "systemd-cryptenroll --unlock-tpm2-device=auto --password {}",
+            luks_device
+        ))
+        .arg("/dev/null")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
 
-    let output = Command::new("systemd-cryptenroll")
-        .arg("--unlock-tpm2-device=auto")
-        .arg(format!("--new-password-file={}", new_key_path.display()))
-        .arg(luks_device)
-        .stdin(Stdio::null())
-        .output()?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        let repeated_password = format!("{0}\n{0}\n", password);
+        stdin.write_all(repeated_password.as_bytes())?;
+    } else {
+        return Err(UnlockError::CommandError(
+            "Failed to open stdin for systemd-cryptenroll enrollment".to_string(),
+        ));
+    }
+
+    let output = child.wait_with_output()?;
 
     if output.status.success() {
         println!("Added Key Vault passphrase to {} (unlocked via TPM2).", luks_device);
