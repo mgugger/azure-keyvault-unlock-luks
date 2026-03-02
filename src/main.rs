@@ -60,16 +60,7 @@ fn get_managed_identity_token() -> Result<String, UnlockError> {
 }
 
 fn get_vm_tags() -> Result<HashMap<String, String>, UnlockError> {
-    let mut stream = TcpStream::connect(IMDS_ENDPOINT)?;
-
-    let request = format!(
-        "GET {} HTTP/1.1\r\nHost: {}\r\nMetadata: true\r\nConnection: close\r\n\r\n",
-        IMDS_TAGS_PATH, IMDS_IP
-    );
-    stream.write_all(request.as_bytes())?;
-
-    let mut response = String::new();
-    stream.read_to_string(&mut response)?;
+    let response = get_instance_metadata()?;
 
     let tags_attr = "\"tags\":\"";
     let tags_start = response.find(tags_attr).ok_or(UnlockError::ParseError("No Tags found"))? + tags_attr.len();
@@ -81,6 +72,56 @@ fn get_vm_tags() -> Result<HashMap<String, String>, UnlockError> {
         .collect();
 
     Ok(tags)
+}
+
+fn get_instance_metadata() -> Result<String, UnlockError> {
+    let mut stream = TcpStream::connect(IMDS_ENDPOINT)?;
+
+    let request = format!(
+        "GET {} HTTP/1.1\r\nHost: {}\r\nMetadata: true\r\nConnection: close\r\n\r\n",
+        IMDS_TAGS_PATH, IMDS_IP
+    );
+    stream.write_all(request.as_bytes())?;
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+
+    Ok(response)
+}
+
+fn is_luks_device(device_path: &str) -> bool {
+    let mut header = [0u8; 6];
+    fs::File::open(device_path)
+        .and_then(|mut file| file.read_exact(&mut header))
+        .is_ok()
+        && header == [0x4c, 0x55, 0x4b, 0x53, 0xba, 0xbe]
+}
+
+fn detect_default_luks_device() -> Option<String> {
+    let mut candidates: Vec<String> = fs::read_dir("/sys/block")
+        .ok()?
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .filter(|disk| disk.starts_with("sd"))
+        .filter_map(|disk_name| {
+            let partition = format!("/dev/{}2", disk_name);
+            (fs::metadata(format!("/sys/block/{0}/{0}2", disk_name)).is_ok() && is_luks_device(&partition))
+                .then_some(partition)
+        })
+        .collect();
+    candidates.sort();
+
+    match candidates.len() {
+        1 => candidates.into_iter().next(),
+        0 => None,
+        _ => {
+            eprintln!(
+                "Auto-detection found multiple LUKS candidates ({}). Set LUKS-UNLOCK-DEVICE explicitly.",
+                candidates.join(", ")
+            );
+            None
+        }
+    }
 }
 
 fn get_key_vault_secret(token: &str, key_vault_url: &str, secret_name: &str) -> Result<String, UnlockError> {
@@ -257,7 +298,7 @@ fn main() -> Result<(), UnlockError> {
     let luks_device = tags
         .get(luks_device_tag)
         .cloned()
-        .unwrap_or_else(|| "/dev/sda2".to_string());
+        .unwrap_or_else(|| detect_default_luks_device().unwrap_or_else(|| "/dev/sda2".to_string()));
     let key_vault_url = tags
         .get(key_vault_url_tag)
         .cloned()

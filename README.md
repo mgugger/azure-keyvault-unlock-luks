@@ -17,7 +17,16 @@ Before deploying and running this project, ensure the following:
     * LUKS-UNLOCK-SECRET-NAME: The name of the secret that holds the LUKS decryption password.
     * Optional Tags:
       * LUKS-UNLOCK-NAME: the luks device name, defaults to "arch-root"
-      * LUKS-UNLOCK-DEVICE: the disk, defaults to /dev/sda2
+      * LUKS-UNLOCK-DEVICE: explicit LUKS block device path override (for example /dev/sda2)
+
+    If `LUKS-UNLOCK-DEVICE` is not set, the binary auto-detects the LUKS device in initramfs without `waagent` by:
+    * scanning `/sys/block/sd*` disks for partition `2`,
+    * checking each `/dev/<disk>2` candidate for a LUKS header signature,
+    * selecting the candidate only when exactly one match exists.
+
+    If multiple matching LUKS candidates are found, auto-detection is considered ambiguous and no device is selected automatically; set `LUKS-UNLOCK-DEVICE` explicitly in that case.
+
+    If detection cannot determine a device, it falls back to `/dev/sda2`.
 
 ## Installation
 * The binary must be located in "/usr/local/bin/luks_unlocker"
