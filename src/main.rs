@@ -152,7 +152,7 @@ fn enroll_tpm(luks_device: &str, password: &str) -> Result<(), UnlockError> {
     let output = Command::new("systemd-cryptenroll")
         .arg("--tpm2-device=auto")
         .arg("--tpm2-pcrs=7+9")
-        .arg(format!("--password-file={}", temp_file_path.display()))
+        .arg(format!("--unlock-key-file={}", temp_file_path.display()))
         .arg(luks_device)
         .output()?;
 
